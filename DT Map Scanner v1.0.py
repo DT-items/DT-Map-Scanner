@@ -10,20 +10,18 @@ import io
 import base64
 import webbrowser
 from datetime import datetime
-import ctypes # НУЖНО ДЛЯ ИКОНКИ В ПАНЕЛИ ЗАДАЧ
+import ctypes 
 
 # --- КОНСТАНТЫ ---
 TILE_W = 32
 TILE_H = 22
-OVERLAP = 3 
-CROP_LEFT = 0
+MARGIN_TILES = 2  # Отступ в клетках (то, что обрезаем)
+CROP_LEFT = 0     # Доп. пиксели для обрезки рамок окна (если нужно)
 CROP_TOP = 0
 CROP_RIGHT = 1 
 CROP_BOTTOM = 1 
 DISCORD_LIMIT_MB = 9.9
 
-# Сюда вставьте вашу строку Base64. 
-# Сейчас здесь закодирована простая стандартная иконка для примера.
 LOGO_BASE64 = """
 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
 """
@@ -37,11 +35,9 @@ SB_THUMBPOSITION = 4
 def resource_path(relative_path):
     """ Получает абсолютный путь к ресурсу, работает и для dev, и для PyInstaller """
     try:
-        # PyInstaller создает временную папку _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
-
     return os.path.join(base_path, relative_path)
 
 class AutomationApp:
@@ -76,7 +72,6 @@ class AutomationApp:
         self.resize_half_var = tk.BooleanVar(value=False)
         self.open_image_var = tk.BooleanVar(value=True)
         self.open_folder_var = tk.BooleanVar(value=False)
-        # Флаг для предупреждения
         self.first_run_warning_shown = False
 
 
@@ -84,7 +79,6 @@ class AutomationApp:
         frame_size = tk.LabelFrame(root, text="Размер карты (клеток)", padx=10, pady=10)
         frame_size.pack(fill=tk.X, padx=10, pady=5)
 
-        # --- Стандартные размеры (Верхний ряд) ---
         frame_standard = tk.Frame(frame_size)
         frame_standard.pack(pady=(0, 10), anchor='center')
         sizes = [50, 100, 200, 400]
@@ -93,7 +87,6 @@ class AutomationApp:
                             command=lambda s=size: self.set_map_size(s, s))
             btn.pack(side=tk.LEFT, padx=5)
 
-        # --- Кастомный размер (Нижний ряд) ---
         frame_custom = tk.Frame(frame_size)
         frame_custom.pack(anchor='center')
 
@@ -177,8 +170,7 @@ class AutomationApp:
             img_lbl.image = img
             img_lbl.pack(pady=10)
         except Exception as e:
-            print(f"Ошибка загрузки Base64 картинки: {e}")
-            Label(about_window, text="[Нет логотипа]").pack(pady=10)
+            pass
 
         footer_text = (
             "\n\nАвторы: mr.Hessen & Gemini 3\n"
@@ -187,7 +179,6 @@ class AutomationApp:
         Label(about_window, text=footer_text, fg="gray", font=("Arial", 8)).pack(side="bottom", pady=10)
 
     def show_cursor_warning(self):
-        """Создает и показывает модальное окно с предупреждением о курсоре."""
         warning_window = Toplevel(self.root)
         warning_window.title("Внимание!")
         warning_window.geometry("450x150")
@@ -282,7 +273,7 @@ class AutomationApp:
             self.first_run_warning_shown = True
 
         self.log("="*40)
-        self.log("ЭТАП 1: Сканирование...")
+        self.log("ЭТАП 1: Сканирование (с обрезкой краев)...")
         
         app = self.connect_app()
         if not app:
@@ -322,12 +313,18 @@ class AutomationApp:
             messagebox.showerror("Ошибка", "Размеры карты должны быть больше нуля. Установите корректный размер.")
             return
             
-        step_x = viewport_tiles_w - OVERLAP
-        step_y = viewport_tiles_h - OVERLAP
+        # --- НОВАЯ ЛОГИКА ШАГА ---
+        # Шаг = размер окна минус "мертвые зоны" с двух сторон
+        # Мертвая зона = MARGIN_TILES (2 клетки)
+        step_x = viewport_tiles_w - (MARGIN_TILES * 2)
+        step_y = viewport_tiles_h - (MARGIN_TILES * 2)
         
+        self.log(f"Видимая область: {viewport_tiles_w}x{viewport_tiles_h}")
+        self.log(f"Шаг сканирования: {step_x}x{step_y} (Обрезка по {MARGIN_TILES} клетки)")
+
         if step_x <= 0 or step_y <= 0:
-            self.log("ОШИБКА: Окно редактора слишком маленькое для сканирования!")
-            messagebox.showerror("Ошибка", "Окно редактора слишком маленькое. Увеличьте его размер.")
+            self.log("ОШИБКА: Окно редактора слишком маленькое для такой обрезки!")
+            messagebox.showerror("Ошибка", "Окно редактора слишком маленькое. Увеличьте его размер, чтобы влезло больше 4 клеток.")
             return
 
         self.set_scroll(dlg, sb_horz, 0, 'H')
@@ -336,23 +333,57 @@ class AutomationApp:
 
         current_y = 0
         while True: 
+            # Определяем позицию Y
             set_y = min(current_y, map_height - viewport_tiles_h)
             if set_y < 0: set_y = 0
             self.set_scroll(dlg, sb_vert, set_y, 'V')
             
+            # Флаги для Y (первый ряд / последний ряд)
+            is_first_y = (set_y == 0)
+            is_last_y = (set_y >= map_height - viewport_tiles_h)
+
             current_x = 0
             while True:
+                # Определяем позицию X
                 set_x = min(current_x, map_width - viewport_tiles_w)
                 if set_x < 0: set_x = 0
                 self.set_scroll(dlg, sb_horz, set_x, 'H')
                 time.sleep(0.5) 
+                
+                # Захват
                 img = ImageGrab.grab(bbox=bbox)
                 w, h = img.size
-                img_cropped = img.crop((CROP_LEFT, CROP_TOP, w - CROP_RIGHT, h - CROP_BOTTOM))
-                filename = f"tile_y{set_y:03d}_x{set_x:03d}.png"
+                
+                # Флаги для X
+                is_first_x = (set_x == 0)
+                is_last_x = (set_x >= map_width - viewport_tiles_w)
+
+                # --- ЛОГИКА ОБРЕЗКИ ---
+                # Если край карты - не режем край. Если середина - режем MARGIN_TILES.
+                crop_l_tiles = 0 if is_first_x else MARGIN_TILES
+                crop_t_tiles = 0 if is_first_y else MARGIN_TILES
+                crop_r_tiles = 0 if is_last_x else MARGIN_TILES
+                crop_b_tiles = 0 if is_last_y else MARGIN_TILES
+
+                # Перевод в пиксели + базовые технические отступы (CROP_LEFT)
+                cut_left = CROP_LEFT + (crop_l_tiles * TILE_W)
+                cut_top = CROP_TOP + (crop_t_tiles * TILE_H)
+                cut_right = w - CROP_RIGHT - (crop_r_tiles * TILE_W)
+                cut_bottom = h - CROP_BOTTOM - (crop_b_tiles * TILE_H)
+
+                img_cropped = img.crop((cut_left, cut_top, cut_right, cut_bottom))
+
+                # --- КОРРЕКЦИЯ КООРДИНАТ ДЛЯ ИМЕНИ ФАЙЛА ---
+                # Так как мы обрезали левый/верхний край, реальная позиция тайла на карте сдвинулась
+                save_x = set_x + crop_l_tiles
+                save_y = set_y + crop_t_tiles
+
+                filename = f"tile_y{save_y:03d}_x{save_x:03d}.png"
                 full_path = os.path.join(save_dir, filename)
                 img_cropped.save(full_path)
-                self.log(f"Saved: {filename}")
+                
+                self.log(f"Pos: {set_x},{set_y} -> Save: {save_x},{save_y} (Crops: L{crop_l_tiles} R{crop_r_tiles} T{crop_t_tiles} B{crop_b_tiles})")
+                
                 if set_x >= (map_width - viewport_tiles_w): break 
                 current_x += step_x
             if set_y >= (map_height - viewport_tiles_h): break
@@ -377,8 +408,11 @@ class AutomationApp:
                     y_tile = int(parts[1][1:])
                     x_tile = int(parts[2][1:])
                 except: continue 
+                
+                # Здесь логика не меняется, так как мы скорректировали координаты в имени файла
                 paste_x = x_tile * TILE_W
                 paste_y = y_tile * TILE_H
+                
                 img_path = os.path.join(folder, filename)
                 chunk = Image.open(img_path)
                 full_map.paste(chunk, (paste_x, paste_y))
@@ -390,19 +424,18 @@ class AutomationApp:
             self.log(f"Сохранение оригинала: {png_path}")
             full_map.save(png_path)
 
-            # --- НОВАЯ ЛОГИКА СЖАТИЯ ---
             png_size_mb = os.path.getsize(png_path) / (1024 * 1024)
             self.log(f"Размер PNG файла: {png_size_mb:.2f} MB")
 
             create_main_jpg = self.compress_discord_var.get() and png_size_mb >= DISCORD_LIMIT_MB
             create_mini_jpg = self.resize_half_var.get()
             
-            quality_for_mini = 90  # Качество по умолчанию для mini, если основной JPG не создается
+            quality_for_mini = 90  
 
             if create_main_jpg:
                 self.log(f"\nПоиск лучшего сжатия для Discord (< {DISCORD_LIMIT_MB} MB)...")
                 best_q = self.find_best_quality(full_map)
-                quality_for_mini = best_q  # Mini будет использовать то же качество
+                quality_for_mini = best_q  
                 
                 jpg_path = os.path.join(os.getcwd(), base_name + "_DISCORD.jpg")
                 self.log(f"Сохранение Discord версии (Quality={best_q})...")
