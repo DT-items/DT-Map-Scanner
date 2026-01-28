@@ -11,6 +11,7 @@ import base64
 import webbrowser
 from datetime import datetime
 import ctypes 
+import win32gui
 
 # --- КОНСТАНТЫ ---
 TILE_W = 32
@@ -44,6 +45,24 @@ class AutomationApp:
     def __init__(self, root):
         self.root = root
         self.root.title("DT Map Scanner v1.0")
+        # --- FIX ДЛЯ МАСШТАБИРОВАНИЯ (High DPI) ---
+        # Получаем текущий DPI экрана (стандартный 96)
+        try:
+            current_dpi = self.root.winfo_fpixels('1i')
+            scale_factor = current_dpi / 96.0
+        except Exception:
+            scale_factor = 1.3
+
+        # Базовые размеры для 100% масштаба
+        base_width = 600
+        base_height = 700
+        
+        # Пересчитываем размер окна под масштаб пользователя
+        scaled_width = int(base_width * scale_factor)
+        scaled_height = int(base_height * scale_factor)
+        
+        self.root.geometry(f"{scaled_width}x{scaled_height}")
+        self.root.resizable(False, False)
         self.root.geometry("600x700")
         self.root.resizable(False, False)
 
@@ -253,19 +272,30 @@ class AutomationApp:
             return Application(backend="win32").connect(path="DTMapEdit.exe")
         except:
             try:
-                return Application(backend="win32").connect(title_re=".*Discord Times.*", class_name="TGameEdit")
+                return Application(backend="win32").connect(title_re=".*Discord Times.*")
             except:
                 return None
 
     def set_scroll(self, parent_dlg, scrollbar_elem, position, direction):
+        """
+        Обновленная функция прокрутки, основанная на тестовом скрипте для обхода ddraw.dll.
+        Использует win32gui для прямой отправки SBM_SETPOS.
+        """
         try:
-            scrollbar_elem.send_message(SBM_SETPOS, position, 1)
+            # 1. Визуально двигаем ползунок (SBM_SETPOS) напрямую через win32gui
+            win32gui.SendMessage(scrollbar_elem.handle, SBM_SETPOS, position, 1)
+            
+            # 2. Заставляем игру перерисовать карту
+            # Формат: WM_VSCROLL, (position << 16) | SB_THUMBPOSITION, scrollbar_handle
             w_param = SB_THUMBPOSITION | (position << 16)
             l_param = scrollbar_elem.handle
             msg = WM_HSCROLL if direction == 'H' else WM_VSCROLL
+            
+            # Отправляем сообщение главному окну
             parent_dlg.send_message(msg, w_param, l_param)
+            
         except Exception as e:
-            self.log(f"Ошибка прокрутки: {e}")
+            self.log(f"Ошибка прокрутки ({direction}): {e}")
 
     def run_process(self):
         if not self.first_run_warning_shown:
@@ -281,16 +311,49 @@ class AutomationApp:
             messagebox.showerror("Ошибка", "Редактор карт DTMapEdit.exe не найден. Убедитесь, что он запущен.")
             return
 
-        dlg = app.top_window()
-        try: dlg.set_focus()
-        except: pass
-        
+        # --- КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ ---
+        # Вместо top_window() (который может найти оверлей ddraw)
+        # Мы явно ищем окно класса TGameEdit, как в работающем тестовом скрипте.
         try:
-            sb_horz = dlg.TScrollBar1
-            sb_vert = dlg.TScrollBar2
+            dlg = app.window(class_name="TGameEdit")
+            dlg.wait('exists', timeout=10)
+            self.log("Главное окно редактора (TGameEdit) найдено.")
+            try: dlg.set_focus()
+            except: pass
         except Exception as e:
-            self.log(f"ОШИБКА поиска скроллбаров: {e}")
-            messagebox.showerror("Ошибка", f"Не удалось найти скроллбары в окне редактора. Ошибка: {e}")
+            self.log(f"ОШИБКА: Не удалось подключиться к окну TGameEdit: {e}")
+            messagebox.showerror("Ошибка", f"Окно редактора найдено, но к нему не удалось подключиться. {e}")
+            return
+        
+        # --- ПОИСК СКРОЛЛБАРОВ (Улучшенная логика для ddraw) ---
+        sb_horz = None
+        sb_vert = None
+        
+        self.log("Поиск элементов управления...")
+        
+        # Пытаемся найти горизонтальный скролл (приоритет TScrollBar0 как в тесте)
+        if dlg.TScrollBar0.exists():
+            sb_horz = dlg.TScrollBar0
+            self.log(f"-> Горизонтальный скролл найден: TScrollBar0 (Handle: {sb_horz.handle})")
+        elif dlg.TScrollBar1.exists():
+            sb_horz = dlg.TScrollBar1
+            self.log(f"-> Горизонтальный скролл найден: TScrollBar1 (Handle: {sb_horz.handle})")
+            
+        # Пытаемся найти вертикальный скролл (приоритет TScrollBar2 как в тесте)
+        if dlg.TScrollBar2.exists():
+            sb_vert = dlg.TScrollBar2
+            self.log(f"-> Вертикальный скролл найден: TScrollBar2 (Handle: {sb_vert.handle})")
+        elif dlg.TScrollBar1.exists() and sb_horz != dlg.TScrollBar1:
+            sb_vert = dlg.TScrollBar1
+            self.log(f"-> Вертикальный скролл найден: TScrollBar1 (Handle: {sb_vert.handle})")
+            
+        if not sb_horz or not sb_vert:
+            self.log(f"ОШИБКА: Не удалось найти скроллбары. Horz={sb_horz}, Vert={sb_vert}")
+            self.log("Диагностика окна:")
+            try:
+                dlg.print_control_identifiers(depth=1)
+            except: pass
+            messagebox.showerror("Ошибка", "Не удалось найти скроллбары в окне редактора. См. лог.")
             return
 
         rect_h = sb_horz.rectangle()
@@ -510,6 +573,15 @@ class AutomationApp:
         return buf.getbuffer().nbytes / (1024 * 1024)
 
 if __name__ == "__main__":
+    # --- ВКЛЮЧАЕМ ПОДДЕРЖКУ HIGH DPI (Четкие шрифты) ---
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
     root = tk.Tk()
     app = AutomationApp(root)
     root.mainloop()
